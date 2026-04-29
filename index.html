@@ -901,9 +901,8 @@
       const POINTS_PER_LETTER = 10;
       const TOP_PLAYERS_LIMIT = 4;
 
-      const STORAGE_KEY = "opquast-crossword-progress-v10";
+      const STORAGE_KEY = "opquast-crossword-progress-v11";
       const THEME_KEY = "opquast-crossword-theme-v6";
-
       const GLOBAL_GAME_DOC = db.collection("gameControl").doc("current");
 
       const entries = {};
@@ -921,6 +920,8 @@
       let timerInterval = null;
       let deadline = Date.now() + GAME_DURATION_SECONDS * 1000;
       let unsubscribeGlobalGame = null;
+      let currentGlobalDeadline = null;
+      let autoStartTimeout = null;
 
       function normalizeText(text) {
         const withoutAccents = (text || "").toUpperCase().normalize("NFD");
@@ -1025,6 +1026,7 @@
           remainingWhenPaused = saved.remainingWhenPaused ?? null;
           deadline =
             saved.deadline || Date.now() + GAME_DURATION_SECONDS * 1000;
+          currentGlobalDeadline = saved.currentGlobalDeadline || null;
         } catch (error) {
           console.warn("Sauvegarde ignorée.", error);
         }
@@ -1045,6 +1047,7 @@
             scoreSaved,
             remainingWhenPaused,
             deadline,
+            currentGlobalDeadline,
           }),
         );
       }
@@ -1110,6 +1113,65 @@
         });
       }
 
+      function startLocalGameWithDeadline(playerName, nextDeadline) {
+        Object.keys(entries).forEach((entryKey) => delete entries[entryKey]);
+        Object.keys(wordStats).forEach((wordNumber) => {
+          delete wordStats[wordNumber];
+        });
+
+        ensureWordStats();
+
+        currentPlayerName = cleanPlayerName(playerName);
+
+        activeWordNumber = null;
+        activeDirection = "horizontal";
+        gameStarted = true;
+        gameEnded = false;
+        paused = false;
+        scoreSaved = false;
+        remainingWhenPaused = null;
+        deadline = nextDeadline;
+        currentGlobalDeadline = nextDeadline;
+
+        document.getElementById("startOverlay").classList.remove("show");
+        document.getElementById("resultOverlay").classList.remove("show");
+        document.getElementById("playerNameText").textContent =
+          currentPlayerName;
+        document.getElementById("gameStatusLabel").textContent = "Jeu en cours";
+        document.getElementById("activeClueLabel").textContent =
+          "Clique sur une définition pour commencer";
+        document.getElementById("pauseButton").textContent = "Pause";
+
+        setGameInputsDisabled(false);
+        renderGrid();
+        renderClues();
+        renderRanking();
+        renderLeaderboard();
+        startTimer();
+        updateScore();
+        saveProgress();
+
+        showToast(`Bonne chance ${currentPlayerName} !`);
+      }
+
+      function autoStartIfNameReady() {
+        if (gameStarted || gameEnded || !currentGlobalDeadline) return;
+
+        const nameInput = document.getElementById("playerNameInput");
+        const typedName = nameInput.value.trim();
+
+        if (!typedName) return;
+
+        const remaining = Math.max(
+          0,
+          Math.ceil((currentGlobalDeadline - Date.now()) / 1000),
+        );
+
+        if (remaining <= 0) return;
+
+        startLocalGameWithDeadline(typedName, currentGlobalDeadline);
+      }
+
       function listenGlobalGame() {
         if (unsubscribeGlobalGame) unsubscribeGlobalGame();
 
@@ -1121,28 +1183,27 @@
           if (data.status === "started" && data.startAtMs) {
             const durationSeconds =
               data.durationSeconds || GAME_DURATION_SECONDS;
-
             const globalDeadline = data.startAtMs + durationSeconds * 1000;
+
+            currentGlobalDeadline = globalDeadline;
+            deadline = globalDeadline;
+
             const remaining = Math.max(
               0,
               Math.ceil((globalDeadline - Date.now()) / 1000),
             );
 
+            document.getElementById("timerText").textContent =
+              formatTime(remaining);
+
             if (remaining <= 0) {
               if (gameStarted && !gameEnded) {
-                deadline = Date.now();
                 endGameBecauseTimeIsOver();
-              } else {
-                document.getElementById("timerText").textContent = formatTime(
-                  GAME_DURATION_SECONDS,
-                );
               }
               return;
             }
 
-            deadline = globalDeadline;
-            document.getElementById("timerText").textContent =
-              formatTime(remaining);
+            autoStartIfNameReady();
 
             if (gameStarted && !gameEnded && !paused) {
               startTimer();
@@ -1221,18 +1282,18 @@
         container.innerHTML = leaderboard
           .map(
             (player, index) => `
-              <div class="leaderboard-item">
-                <div class="leaderboard-rank">${index + 1}</div>
-                <div>
-                  ${player.name}
-                  <small>${player.solvedWords} / ${player.totalWords} mots · ${player.date}</small>
-                </div>
-                <div class="clue-info">
-                  <span class="rank-chip">${player.score} pts</span>
-                  <span class="rank-chip">${formatTime(player.remainingSeconds)}</span>
-                </div>
-              </div>
-            `,
+          <div class="leaderboard-item">
+            <div class="leaderboard-rank">${index + 1}</div>
+            <div>
+              ${player.name}
+              <small>${player.solvedWords} / ${player.totalWords} mots · ${player.date}</small>
+            </div>
+            <div class="clue-info">
+              <span class="rank-chip">${player.score} pts</span>
+              <span class="rank-chip">${formatTime(player.remainingSeconds)}</span>
+            </div>
+          </div>
+        `,
           )
           .join("");
       }
@@ -1385,17 +1446,17 @@
             const status = stats.solvedAt ? "Terminé" : "À faire";
 
             return `
-              <div class="ranking-item">
-                <div>
-                  Mot ${word.number}
-                  <small>${normalizeText(word.answer).length} lettres · ${status}</small>
-                </div>
-                <div class="clue-info">
-                  <span class="rank-chip">${points} pts</span>
-                  <span class="rank-chip">${time}</span>
-                </div>
-              </div>
-            `;
+          <div class="ranking-item">
+            <div>
+              Mot ${word.number}
+              <small>${normalizeText(word.answer).length} lettres · ${status}</small>
+            </div>
+            <div class="clue-info">
+              <span class="rank-chip">${points} pts</span>
+              <span class="rank-chip">${time}</span>
+            </div>
+          </div>
+        `;
           })
           .join("");
       }
@@ -1458,6 +1519,12 @@
           window.clearInterval(timerInterval);
           setGameInputsDisabled(true);
           saveProgress();
+
+          GLOBAL_GAME_DOC.update({
+            status: "ended",
+            endedAtMs: Date.now(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          }).catch(() => {});
 
           showResult(
             "Bravo !",
@@ -1698,13 +1765,13 @@
           clue.disabled = !gameStarted || gameEnded || paused;
 
           clue.innerHTML = `
-            <strong>${word.number}. ${word.clue}</strong>
-            <div class="clue-info">
-              <span>${normalizeText(word.answer).length} lettres</span>
-              <span class="clue-score" id="score-word-${word.number}">0 pt</span>
-              <span id="time-word-${word.number}">non commencé</span>
-            </div>
-          `;
+        <strong>${word.number}. ${word.clue}</strong>
+        <div class="clue-info">
+          <span>${normalizeText(word.answer).length} lettres</span>
+          <span class="clue-score" id="score-word-${word.number}">0 pt</span>
+          <span id="time-word-${word.number}">non commencé</span>
+        </div>
+      `;
 
           clue.addEventListener("click", () => {
             focusWord(word.number);
@@ -1718,52 +1785,23 @@
       async function startGame(event) {
         event.preventDefault();
 
-        Object.keys(entries).forEach((entryKey) => delete entries[entryKey]);
-        Object.keys(wordStats).forEach((wordNumber) => {
-          delete wordStats[wordNumber];
-        });
-
-        ensureWordStats();
-
-        currentPlayerName = cleanPlayerName(
+        const playerName = cleanPlayerName(
           document.getElementById("playerNameInput").value,
         );
 
-        activeWordNumber = null;
-        activeDirection = "horizontal";
-        gameStarted = true;
-        gameEnded = false;
-        paused = false;
-        scoreSaved = false;
-        remainingWhenPaused = null;
-
-        document.getElementById("startOverlay").classList.remove("show");
-        document.getElementById("resultOverlay").classList.remove("show");
-        document.getElementById("playerNameText").textContent =
-          currentPlayerName;
-        document.getElementById("gameStatusLabel").textContent = "Jeu en cours";
-        document.getElementById("activeClueLabel").textContent =
-          "Clique sur une définition pour commencer";
-        document.getElementById("pauseButton").textContent = "Pause";
-
         try {
-          deadline = await getOrCreateGlobalDeadline(currentPlayerName);
+          const globalDeadline = await getOrCreateGlobalDeadline(playerName);
+          currentGlobalDeadline = globalDeadline;
+          startLocalGameWithDeadline(playerName, globalDeadline);
         } catch (error) {
           console.error("Erreur chrono global :", error);
-          deadline = Date.now() + GAME_DURATION_SECONDS * 1000;
+
+          const localDeadline = Date.now() + GAME_DURATION_SECONDS * 1000;
+          currentGlobalDeadline = localDeadline;
+
+          startLocalGameWithDeadline(playerName, localDeadline);
           showToast("Chrono global indisponible. Partie locale lancée.");
         }
-
-        setGameInputsDisabled(false);
-        renderGrid();
-        renderClues();
-        renderRanking();
-        renderLeaderboard();
-        startTimer();
-        updateScore();
-        saveProgress();
-
-        showToast(`Bonne chance ${currentPlayerName} !`);
       }
 
       function togglePause() {
@@ -1780,6 +1818,7 @@
             "Jeu en pause";
         } else {
           deadline = Date.now() + remainingWhenPaused * 1000;
+          currentGlobalDeadline = deadline;
           remainingWhenPaused = null;
           setGameInputsDisabled(false);
           document.getElementById("pauseButton").textContent = "Pause";
@@ -1824,7 +1863,8 @@
         scoreSaved = false;
         currentPlayerName = "";
         remainingWhenPaused = null;
-        deadline = Date.now() + GAME_DURATION_SECONDS * 1000;
+        deadline =
+          currentGlobalDeadline || Date.now() + GAME_DURATION_SECONDS * 1000;
 
         window.clearInterval(timerInterval);
         clearProgress();
@@ -1839,7 +1879,7 @@
           "En attente du joueur";
         document.getElementById("pauseButton").textContent = "Pause";
         document.getElementById("timerText").textContent = formatTime(
-          GAME_DURATION_SECONDS,
+          getRemainingSeconds(),
         );
 
         renderGrid();
@@ -1913,6 +1953,13 @@
 
         loadProgress();
         ensureWordStats();
+
+        const playerInput = document.getElementById("playerNameInput");
+
+        playerInput.addEventListener("input", () => {
+          window.clearTimeout(autoStartTimeout);
+          autoStartTimeout = window.setTimeout(autoStartIfNameReady, 800);
+        });
 
         if (!gameStarted) {
           document.getElementById("startOverlay").classList.add("show");
