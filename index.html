@@ -1148,20 +1148,32 @@
       }
 
       async function getLeaderboard() {
-        try {
-          const snapshot = await db
-            .collection("leaderboard")
-            .orderBy("score", "desc")
-            .limit(TOP_PLAYERS_LIMIT)
-            .get();
+        async function getLeaderboard() {
+          try {
+            const snapshot = await db.collection("leaderboard").get();
 
-          return snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-        } catch (error) {
-          console.error("Erreur Firebase getLeaderboard :", error);
-          return [];
+            const leaderboard = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+
+            leaderboard.sort((a, b) => {
+              if ((b.score || 0) !== (a.score || 0)) {
+                return (b.score || 0) - (a.score || 0);
+              }
+
+              if ((b.solvedWords || 0) !== (a.solvedWords || 0)) {
+                return (b.solvedWords || 0) - (a.solvedWords || 0);
+              }
+
+              return (b.remainingSeconds || 0) - (a.remainingSeconds || 0);
+            });
+
+            return leaderboard.slice(0, TOP_PLAYERS_LIMIT);
+          } catch (error) {
+            console.error("Erreur Firebase getLeaderboard :", error);
+            return [];
+          }
         }
       }
 
@@ -1201,18 +1213,18 @@
         container.innerHTML = leaderboard
           .map(
             (player, index) => `
-        <div class="leaderboard-item">
-          <div class="leaderboard-rank">${index + 1}</div>
-          <div>
-            ${player.name}
-            <small>${player.solvedWords} / ${player.totalWords} mots · ${player.date}</small>
-          </div>
-          <div class="clue-info">
-            <span class="rank-chip">${player.score} pts</span>
-            <span class="rank-chip">${formatTime(player.remainingSeconds)}</span>
-          </div>
-        </div>
-      `,
+              <div class="leaderboard-item">
+                <div class="leaderboard-rank">${index + 1}</div>
+                <div>
+                  ${player.name}
+                  <small>${player.solvedWords} / ${player.totalWords} mots · ${player.date}</small>
+                </div>
+                <div class="clue-info">
+                  <span class="rank-chip">${player.score} pts</span>
+                  <span class="rank-chip">${formatTime(player.remainingSeconds)}</span>
+                </div>
+              </div>
+            `,
           )
           .join("");
       }
@@ -1259,11 +1271,21 @@
 
       function calculateWordPoints(word, elapsedSeconds) {
         const basePoints = getWordCells(word).length * POINTS_PER_LETTER;
-        const speedBonus = Math.max(
-          0,
-          MAX_SPEED_BONUS - Math.floor(elapsedSeconds / 5),
-        );
-        return Math.max(0, basePoints + speedBonus);
+
+        let speedBonus = 0;
+
+        // Bonus si le joueur répond vite
+        if (elapsedSeconds <= 10) {
+          speedBonus = 30;
+        } else if (elapsedSeconds <= 20) {
+          speedBonus = 20;
+        } else if (elapsedSeconds <= 30) {
+          speedBonus = 10;
+        } else {
+          speedBonus = 0;
+        }
+
+        return basePoints + speedBonus;
       }
 
       function evaluateSolvedWords() {
@@ -1347,17 +1369,17 @@
             const status = stats.solvedAt ? "Terminé" : "À faire";
 
             return `
-              <div class="ranking-item">
-                <div>
-                  Mot ${word.number}
-                  <small>${normalizeText(word.answer).length} lettres · ${status}</small>
-                </div>
-                <div class="clue-info">
-                  <span class="rank-chip">${points} pts</span>
-                  <span class="rank-chip">${time}</span>
-                </div>
-              </div>
-            `;
+                    <div class="ranking-item">
+                      <div>
+                        Mot ${word.number}
+                        <small>${normalizeText(word.answer).length} lettres · ${status}</small>
+                      </div>
+                      <div class="clue-info">
+                        <span class="rank-chip">${points} pts</span>
+                        <span class="rank-chip">${time}</span>
+                      </div>
+                    </div>
+                  `;
           })
           .join("");
       }
@@ -1622,13 +1644,13 @@
           clue.dataset.clueNumber = word.number;
           clue.disabled = !gameStarted || gameEnded || paused;
           clue.innerHTML = `
-            <strong>${word.number}. ${word.clue}</strong>
-            <div class="clue-info">
-              <span>${normalizeText(word.answer).length} lettres</span>
-              <span class="clue-score" id="score-word-${word.number}">0 pt</span>
-              <span id="time-word-${word.number}">non commencé</span>
-            </div>
-          `;
+                  <strong>${word.number}. ${word.clue}</strong>
+                  <div class="clue-info">
+                    <span>${normalizeText(word.answer).length} lettres</span>
+                    <span class="clue-score" id="score-word-${word.number}">0 pt</span>
+                    <span id="time-word-${word.number}">non commencé</span>
+                  </div>
+                `;
           clue.addEventListener("click", () => focusWord(word.number));
 
           if (word.direction === "horizontal") horizontalBox.appendChild(clue);
