@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mots croisés - Opquast</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #f4f7fb;
+        color: #1f2937;
+      }
+
+      .container {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        margin-bottom: 20px;
+      }
+
+      h1,
+      h2 {
+        margin-top: 0;
+        color: #0f172a;
+      }
+
+      p {
+        line-height: 1.5;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 10px 16px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+        transition: 0.2s;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn-secondary {
+        background: white;
+        color: #111827;
+        border: 1px solid #cbd5e1;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+        align-items: start;
+      }
+
+      .grid-wrapper {
+        overflow-x: auto;
+        padding-bottom: 10px;
+      }
+
+      .crossword-grid {
+        display: grid;
+        gap: 4px;
+        width: max-content;
+        margin-top: 10px;
+      }
+
+      .cell,
+      .blocked {
+        width: 46px;
+        height: 46px;
+        position: relative;
+        border-radius: 8px;
+      }
+
+      .blocked {
+        background: #1e293b;
+      }
+
+      .cell input {
+        width: 100%;
+        height: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 22px;
+        font-weight: bold;
+        text-transform: uppercase;
+        outline: none;
+        transition: 0.2s;
+        background: white;
+        color: #111827;
+      }
+
+      .cell input.correct {
+        background: #dcfce7;
+        border-color: #22c55e;
+        color: #166534;
+      }
+
+      .cell input.incorrect {
+        background: #fee2e2;
+        border-color: #ef4444;
+        color: #b91c1c;
+      }
+
+      .cell .number {
+        position: absolute;
+        top: 2px;
+        left: 5px;
+        font-size: 10px;
+        font-weight: bold;
+        color: #475569;
+        z-index: 2;
+      }
+
+      .clue {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+
+      .clue strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .score {
+        margin-top: 12px;
+        font-weight: bold;
+        color: #0f172a;
+      }
+
+      .small {
+        font-size: 13px;
+        color: #475569;
+        margin-top: 8px;
+      }
+
+      .success-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 999;
+        padding: 20px;
+      }
+
+      .success-overlay.show {
+        display: flex;
+      }
+
+      .success-card {
+        background: white;
+        border-radius: 24px;
+        padding: 28px 24px;
+        max-width: 440px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        animation: pop 0.35s ease;
+      }
+
+      @keyframes pop {
+        0% {
+          transform: scale(0.85);
+          opacity: 0;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .mascot-img {
+        width: 220px;
+        max-width: 100%;
+        display: block;
+        margin: 0 auto 14px;
+        animation: bounce 1s ease-in-out infinite;
+        filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.18));
+      }
+
+      @keyframes bounce {
+        0% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-6px);
+        }
+        100% {
+          transform: translateY(0);
+        }
+      }
+
+      .success-card h2 {
+        margin-bottom: 10px;
+        font-size: 30px;
+        color: #15803d;
+      }
+
+      .success-card p {
+        margin-bottom: 18px;
+        color: #334155;
+        font-size: 16px;
+      }
+
+      .success-btn {
+        background: #22c55e;
+        color: white;
+      }
+
+      @media (max-width: 1100px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .cell,
+        .blocked {
+          width: 40px;
+          height: 40px;
+        }
+
+        .cell input {
+          font-size: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>Mots croisés - Opquast</h1>
+        <p>
+          Tape les lettres dans la grille. Chaque lettre devient
+          <strong>verte</strong> si elle est correcte et
+          <strong>rouge</strong> si elle est fausse.
+        </p>
+
+        <div class="actions">
+          <button class="btn-secondary" onclick="resetGrid()">
+            Réinitialiser
+          </button>
+          <button class="btn-secondary" onclick="showAnswers()">
+            Afficher les réponses
+          </button>
+        </div>
+
+        <div class="score" id="score">Bonnes lettres : 0 / 0</div>
+        <div class="small">Les cases vides restent blanches.</div>
+      </div>
+
+      <div class="layout">
+        <div class="card grid-wrapper">
+          <div id="grid" class="crossword-grid"></div>
+        </div>
+
+        <div>
+          <div class="card">
+            <h2>Horizontalement</h2>
+            <div id="horizontal-clues"></div>
+          </div>
+
+          <div class="card">
+            <h2>Verticalement</h2>
+            <div id="vertical-clues"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="successOverlay" class="success-overlay">
+      <div class="success-card">
+        <img
+          src="img/mascotte-applaudit.png"
+          alt="Mascotte qui applaudit"
+          class="mascot-img"
+        />
+        <h2>Bravo !</h2>
+        <p>Toutes les réponses sont correctes. Tu as réussi le jeu 🎉</p>
+        <button class="success-btn" onclick="closeSuccessCard()">Fermer</button>
+      </div>
+    </div>
+
+    <script>
+      const words = [
+        {
+          number: 1,
+          direction: "vertical",
+          answer: "OPQUAST",
+          clue: "Je suis la certification de référence en qualité web.",
+          row: 1,
+          col: 6,
+        },
+        {
+          number: 2,
+          direction: "horizontal",
+          answer: "CONTENUS",
+          clue: "Je regroupe les textes, les images et les informations d’un site.",
+          row: 1,
+          col: 5,
+        },
+        {
+          number: 3,
+          direction: "horizontal",
+          answer: "PERCEPTION",
+          clue: "Je concerne la manière dont l’utilisateur voit et ressent le site.",
+          row: 2,
+          col: 6,
+        },
+        {
+          number: 4,
+          direction: "horizontal",
+          answer: "QUALITE",
+          clue: "Je suis l’objectif principal recherché dans un projet web.",
+          row: 3,
+          col: 6,
+        },
+        {
+          number: 5,
+          direction: "horizontal",
+          answer: "STRUCTURE",
+          clue: "Je suis une thématique liée au HTML, au balisage et à l’organisation des pages.",
+          row: 4,
+          col: 3,
+        },
+        {
+          number: 6,
+          direction: "horizontal",
+          answer: "ACCESSIBILITE",
+          clue: "Je permets à tous les utilisateurs d’accéder au site, y compris les personnes en situation de handicap.",
+          row: 5,
+          col: 6,
+        },
+        {
+          number: 7,
+          direction: "horizontal",
+          answer: "SERVICES",
+          clue: "Je représente les fonctionnalités proposées à l’utilisateur.",
+          row: 6,
+          col: 6,
+        },
+        {
+          number: 8,
+          direction: "horizontal",
+          answer: "TECHNIQUE",
+          clue: "Je concerne le code, le fonctionnement et les aspects techniques du site.",
+          row: 7,
+          col: 6,
+        },
+        {
+          number: 9,
+          direction: "horizontal",
+          answer: "VPTCS",
+          clue: "Je suis le modèle utilisé par Opquast pour organiser la qualité web en 5 dimensions.",
+          row: 9,
+          col: 2,
+        },
+        {
+          number: 10,
+          direction: "horizontal",
+          answer: "REFERENTIEL",
+          clue: "Je rassemble les règles et bonnes pratiques proposées par Opquast.",
+          row: 10,
+          col: 8,
+        },
+      ];
+
+      const ROWS = 12;
+      const COLS = 20;
+      const entries = {};
+      let winShown = false;
+
+      function normalizeText(text) {
+        return (text || "")
+          .toUpperCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^A-Z]/g, "");
+      }
+
+      function key(r, c) {
+        return `${r}-${c}`;
+      }
+
+      function buildBoard() {
+        const board = Array.from({ length: ROWS }, () =>
+          Array.from({ length: COLS }, () => ({
+            blocked: true,
+            solution: "",
+            starts: [],
+          })),
+        );
+
+        for (const word of words) {
+          const answer = normalizeText(word.answer);
+
+          for (let i = 0; i < answer.length; i++) {
+            const r = word.direction === "horizontal" ? word.row : word.row + i;
+            const c = word.direction === "horizontal" ? word.col + i : word.col;
+
+            if (r >= ROWS || c >= COLS) continue;
+
+            board[r][c].blocked = false;
+            board[r][c].solution = answer[i];
+          }
+
+          board[word.row][word.col].starts.push(word.number);
+        }
+
+        return board;
+      }
+
+      const board = buildBoard();
+
+      function colorInput(input, r, c) {
+        const solution = board[r][c].solution;
+        const value = normalizeText(input.value);
+
+        input.classList.remove("correct", "incorrect");
+
+        if (!value) return;
+
+        if (value === solution) {
+          input.classList.add("correct");
+        } else {
+          input.classList.add("incorrect");
+        }
+      }
+
+      function updateScore() {
+        let total = 0;
+        let correct = 0;
+
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            if (!board[r][c].blocked) {
+              total++;
+              if ((entries[key(r, c)] || "") === board[r][c].solution) {
+                correct++;
+              }
+            }
+          }
+        }
+
+        document.getElementById("score").textContent =
+          `Bonnes lettres : ${correct} / ${total}`;
+        checkIfAllCorrect(total, correct);
+      }
+
+      function checkIfAllCorrect(total, correct) {
+        if (total > 0 && correct === total && !winShown) {
+          winShown = true;
+          document.getElementById("successOverlay").classList.add("show");
+        }
+      }
+
+      function closeSuccessCard() {
+        document.getElementById("successOverlay").classList.remove("show");
+      }
+
+      function focusNextCell(r, c) {
+        const nextCol = c + 1;
+        const nextInput = document.querySelector(
+          `input[data-row="${r}"][data-col="${nextCol}"]`,
+        );
+        if (nextInput) {
+          nextInput.focus();
+        }
+      }
+
+      function renderGrid() {
+        const grid = document.getElementById("grid");
+        grid.style.gridTemplateColumns = `repeat(${COLS}, 46px)`;
+        grid.innerHTML = "";
+
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const cellData = board[r][c];
+
+            if (cellData.blocked) {
+              const blocked = document.createElement("div");
+              blocked.className = "blocked";
+              grid.appendChild(blocked);
+              continue;
+            }
+
+            const cell = document.createElement("div");
+            cell.className = "cell";
+
+            if (cellData.starts.length > 0) {
+              const number = document.createElement("span");
+              number.className = "number";
+              number.textContent = cellData.starts[0];
+              cell.appendChild(number);
+            }
+
+            const input = document.createElement("input");
+            input.maxLength = 1;
+            input.value = entries[key(r, c)] || "";
+            input.dataset.row = r;
+            input.dataset.col = c;
+
+            input.addEventListener("input", (e) => {
+              const value = normalizeText(e.target.value).slice(-1);
+              e.target.value = value;
+              entries[key(r, c)] = value;
+
+              colorInput(e.target, r, c);
+              updateScore();
+
+              if (value) {
+                focusNextCell(r, c);
+              }
+            });
+
+            input.addEventListener("keydown", (e) => {
+              if (e.key === "Backspace" && !e.target.value) {
+                const prevCol = c - 1;
+                const prevInput = document.querySelector(
+                  `input[data-row="${r}"][data-col="${prevCol}"]`,
+                );
+                if (prevInput) {
+                  prevInput.focus();
+                }
+              }
+            });
+
+            cell.appendChild(input);
+            grid.appendChild(cell);
+
+            colorInput(input, r, c);
+          }
+        }
+
+        updateScore();
+      }
+
+      function renderClues() {
+        const horizontalBox = document.getElementById("horizontal-clues");
+        const verticalBox = document.getElementById("vertical-clues");
+
+        horizontalBox.innerHTML = "";
+        verticalBox.innerHTML = "";
+
+        words.forEach((word) => {
+          const clue = document.createElement("div");
+          clue.className = "clue";
+          clue.innerHTML = `
+          <strong>${word.number}. ${word.clue}</strong>
+          <span>${normalizeText(word.answer).length} lettres</span>
+        `;
+
+          if (word.direction === "horizontal") {
+            horizontalBox.appendChild(clue);
+          } else {
+            verticalBox.appendChild(clue);
+          }
+        });
+      }
+
+      function resetGrid() {
+        Object.keys(entries).forEach((k) => delete entries[k]);
+        winShown = false;
+        closeSuccessCard();
+        renderGrid();
+      }
+
+      function showAnswers() {
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            if (!board[r][c].blocked) {
+              entries[key(r, c)] = board[r][c].solution;
+            }
+          }
+        }
+        winShown = false;
+        renderGrid();
+      }
+
+      renderGrid();
+      renderClues();
+    </script>
+  </body>
+</html>
