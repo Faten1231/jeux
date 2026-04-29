@@ -873,8 +873,21 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
+    <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore-compat.js"></script>
     <script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyCotDD3me4ZJRjbjU108NXb1URpAsVuzAY",
+        authDomain: "jeu-opquast.firebaseapp.com",
+        projectId: "jeu-opquast",
+        storageBucket: "jeu-opquast.firebasestorage.app",
+        messagingSenderId: "373972644315",
+        appId: "1:373972644315:web:20a59304bda9b34c8af7fe",
+        measurementId: "G-ZJ3VTJVV7V5",
+      };
+
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
       const words = [
         {
           number: 1,
@@ -960,7 +973,7 @@
 
       const ROWS = 12;
       const COLS = 20;
-      const GAME_DURATION_SECONDS = 10 * 60;
+      const GAME_DURATION_SECONDS = 1 * 60;
       const POINTS_PER_LETTER = 10;
       const MAX_SPEED_BONUS = 30;
       const TOP_PLAYERS_LIMIT = 4;
@@ -1134,47 +1147,52 @@
         return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       }
 
-      function getLeaderboard() {
+      async function getLeaderboard() {
         try {
-          return JSON.parse(localStorage.getItem(LEADERBOARD_KEY) || "[]");
+          const snapshot = await db
+            .collection("leaderboard")
+            .orderBy("score", "desc")
+            .limit(TOP_PLAYERS_LIMIT)
+            .get();
+
+          return snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
         } catch (error) {
+          console.error("Erreur Firebase getLeaderboard :", error);
           return [];
         }
       }
 
-      function saveLeaderboard() {
+      async function saveLeaderboard() {
         if (scoreSaved || !currentPlayerName) return;
 
-        const leaderboard = getLeaderboard();
-        leaderboard.push({
-          name: currentPlayerName,
-          score: getTotalScore(),
-          solvedWords: getSolvedWordsCount(),
-          totalWords: words.length,
-          remainingSeconds: getRemainingSeconds(),
-          date: new Date().toLocaleDateString("fr-FR"),
-        });
+        try {
+          await db.collection("leaderboard").add({
+            name: currentPlayerName,
+            score: getTotalScore(),
+            solvedWords: getSolvedWordsCount(),
+            totalWords: words.length,
+            remainingSeconds: getRemainingSeconds(),
+            date: new Date().toLocaleDateString("fr-FR"),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
 
-        leaderboard.sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          if (b.solvedWords !== a.solvedWords)
-            return b.solvedWords - a.solvedWords;
-          return b.remainingSeconds - a.remainingSeconds;
-        });
-
-        localStorage.setItem(
-          LEADERBOARD_KEY,
-          JSON.stringify(leaderboard.slice(0, TOP_PLAYERS_LIMIT)),
-        );
-        scoreSaved = true;
-        saveProgress();
+          scoreSaved = true;
+          saveProgress();
+        } catch (error) {
+          console.error("Erreur Firebase saveLeaderboard :", error);
+          showToast("Le score n'a pas pu être enregistré.");
+        }
       }
 
-      function renderLeaderboard(targetId = "leaderboardList") {
+      async function renderLeaderboard(targetId = "leaderboardList") {
         const container = document.getElementById(targetId);
         if (!container) return;
 
-        const leaderboard = getLeaderboard().slice(0, TOP_PLAYERS_LIMIT);
+        const leaderboard = await getLeaderboard();
+
         if (!leaderboard.length) {
           container.innerHTML = `<div class="empty">Aucun score enregistré pour le moment.</div>`;
           return;
@@ -1183,18 +1201,18 @@
         container.innerHTML = leaderboard
           .map(
             (player, index) => `
-              <div class="leaderboard-item">
-                <div class="leaderboard-rank">${index + 1}</div>
-                <div>
-                  ${player.name}
-                  <small>${player.solvedWords} / ${player.totalWords} mots · ${player.date}</small>
-                </div>
-                <div class="clue-info">
-                  <span class="rank-chip">${player.score} pts</span>
-                  <span class="rank-chip">${formatTime(player.remainingSeconds)}</span>
-                </div>
-              </div>
-            `,
+        <div class="leaderboard-item">
+          <div class="leaderboard-rank">${index + 1}</div>
+          <div>
+            ${player.name}
+            <small>${player.solvedWords} / ${player.totalWords} mots · ${player.date}</small>
+          </div>
+          <div class="clue-info">
+            <span class="rank-chip">${player.score} pts</span>
+            <span class="rank-chip">${formatTime(player.remainingSeconds)}</span>
+          </div>
+        </div>
+      `,
           )
           .join("");
       }
@@ -1373,8 +1391,8 @@
         });
       }
 
-      function showResult(title, message, isTimeOver = false) {
-        saveLeaderboard();
+      async function showResult(title, message, isTimeOver = false) {
+        await saveLeaderboard();
         const resultCard = document.getElementById("resultCard");
         document.getElementById("resultTitle").textContent = title;
         document.getElementById("resultMessage").textContent = message;
@@ -1385,8 +1403,8 @@
         document.getElementById("finalTimeText").textContent = formatTime(
           getRemainingSeconds(),
         );
-        renderLeaderboard("finalLeaderboardList");
-        renderLeaderboard("leaderboardList");
+        await renderLeaderboard("finalLeaderboardList");
+        await renderLeaderboard("leaderboardList");
         resultCard.classList.toggle("time-over", isTimeOver);
         document.getElementById("resultOverlay").classList.add("show");
       }
